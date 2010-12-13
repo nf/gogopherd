@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -37,21 +38,28 @@ type Entry struct {
 	Port     int
 }
 
-var sentinel = Entry{Type: T_Sentinel}
-
 func (e Entry) String() string {
-	if e.Type == T_Sentinel {
-		return ""
-	}
 	return fmt.Sprintf("%c%s\t%s\t%s\t%d\r\n",
 		e.Type, e.Display, e.Selector, e.Hostname, e.Port)
 }
 
 type Listing []Entry
 
+func (l Listing) String() string {
+	var b bytes.Buffer
+	for _, e := range l {
+		if e.Type == T_Sentinel {
+			continue
+		}
+		fmt.Fprint(&b, e)
+	}
+	fmt.Fprint(&b, ".\r\n")
+	return b.String()
+}
+
 func (l *Listing) VisitDir(path string, f *os.FileInfo) bool {
 	if len(*l) == 0 {
-		*l = append(*l, sentinel)
+		*l = append(*l, Entry{Type: T_Sentinel})
 		return true
 	}
 	*l = append(*l, Entry{T_Directory, f.Name, path[len(*root):], *host, *port})
@@ -62,36 +70,29 @@ func (l *Listing) VisitFile(path string, f *os.FileInfo) {
 	*l = append(*l, Entry{T_Binary, f.Name, path[len(*root):], *host, *port})
 }
 
-func (l Listing) Fprint(w io.Writer) {
-	for _, e := range l {
-		fmt.Fprint(w, e)
-	}
-	fmt.Fprint(w, ".\r\n")
-}
-
 func Serve(c net.Conn) {
 	defer c.Close()
 	var p string
 	n, err := fmt.Fscanln(c, &p)
 	if n != 1 || err != nil {
-		Error("Invalid request").Fprint(c)
+		fmt.Fprint(c, Error("invalid request"))
 		return
 	}
 	filename := *root + p
 	fi, err := os.Stat(filename)
 	if err != nil {
-		Error(err.String()).Fprint(c)
+		fmt.Fprint(c, Error("not found"))
 		return
 	}
 	if fi.IsDirectory() {
 		var list Listing
 		path.Walk(filename, &list, nil)
-		list.Fprint(c)
+		fmt.Fprint(c, list)
 		return
 	}
 	f, err := os.Open(filename, os.O_RDONLY, 0)
 	if err != nil {
-		Error(err.String()).Fprint(c)
+		fmt.Fprint(c, Error("couldn't open file"))
 		return
 	}
 	io.Copy(c, f)
