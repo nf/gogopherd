@@ -78,7 +78,7 @@ func Serve(c net.Conn) {
 		fmt.Fprint(c, Error("invalid request"))
 		return
 	}
-	filename := *root + p
+	filename := *root + path.Clean("/" + p)
 	fi, err := os.Stat(filename)
 	if err != nil {
 		fmt.Fprint(c, Error("not found"))
