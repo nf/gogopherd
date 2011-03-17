@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"path"
+	"path/filepath"
 	"os"
 	"log"
 	"net"
@@ -85,7 +85,7 @@ func Serve(c net.Conn) {
 	}
 	if fi.IsDirectory() {
 		var list Listing
-		path.Walk(filename, &list, nil)
+		filepath.Walk(filename, &list, nil)
 		list.Fprint(c)
 		return
 	}
@@ -104,19 +104,19 @@ func Error(msg string) Listing {
 func main() {
 	flag.Parse()
 	if *root == "" {
-		log.Exit("Please specify a content root with -root")
+		log.Fatal("Please specify a content root with -root")
 	}
 	if (*root)[len(*root)-1:] == "/" {
 		*root = (*root)[:len(*root)-1]
 	}
 	l, err := net.Listen("tcp", fmt.Sprintf("%s:%d", *host, *port))
 	if err != nil {
-		log.Exit(err)
+		log.Fatal(err)
 	}
 	for {
 		c, err := l.Accept()
 		if err != nil {
-			log.Exit(err)
+			log.Fatal(err)
 		}
 		go Serve(c)
 	}
