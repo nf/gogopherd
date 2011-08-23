@@ -5,29 +5,17 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"path/filepath"
-	"os"
 	"log"
 	"net"
+	"os"
+	"path/filepath"
+	"strings"
 )
 
 var (
 	host = flag.String("host", "localhost", "server hostname")
 	port = flag.Int("port", 70, "server port number")
-	root = flag.String("root", "", "gopher content root")
-)
-
-const (
-	T_PlainText = '0'
-	T_Directory = '1'
-	T_Error     = '3'
-	T_Binary    = '9'
-	T_GIF       = 'g'
-	T_HTML      = 'h'
-	T_Info      = 'i'
-	T_Image     = 'I'
-	T_Audio     = 's'
-	T_Sentinel  = 0
+	root string
 )
 
 type Entry struct {
@@ -48,9 +36,6 @@ type Listing []Entry
 func (l Listing) String() string {
 	var b bytes.Buffer
 	for _, e := range l {
-		if e.Type == T_Sentinel {
-			continue
-		}
 		fmt.Fprint(&b, e)
 	}
 	fmt.Fprint(&b, ".\r\n")
@@ -59,15 +44,35 @@ func (l Listing) String() string {
 
 func (l *Listing) VisitDir(path string, f *os.FileInfo) bool {
 	if len(*l) == 0 {
-		*l = append(*l, Entry{Type: T_Sentinel})
 		return true
 	}
-	*l = append(*l, Entry{T_Directory, f.Name, path[len(*root):], *host, *port})
+	*l = append(*l, Entry{'1', f.Name, path[len(root):], *host, *port})
 	return false
 }
 
+var suffixes = map[string]byte{
+	"aiff": 's',
+	"au": 's',
+	"gif": 'g',
+	"go": '0',
+	"html": 'h',
+	"jpeg": 'I',
+	"jpg": 'I',
+	"mp3": 's',
+	"png": 'I',
+	"txt": '0',
+	"wav": 's',
+}
+
 func (l *Listing) VisitFile(path string, f *os.FileInfo) {
-	*l = append(*l, Entry{T_Binary, f.Name, path[len(*root):], *host, *port})
+	t := byte('9') // Binary
+	for s, c := range suffixes {
+		if strings.HasSuffix(path, "."+s) {
+			t = c
+			break
+		}
+	}
+	*l = append(*l, Entry{t, f.Name, path[len(root):], *host, *port})
 }
 
 func Serve(c net.Conn) {
@@ -78,7 +83,7 @@ func Serve(c net.Conn) {
 		fmt.Fprint(c, Error("invalid request"))
 		return
 	}
-	filename := *root + filepath.Clean("/" + p)
+	filename := root + filepath.Clean("/"+p)
 	fi, err := os.Stat(filename)
 	if err != nil {
 		fmt.Fprint(c, Error("not found"))
@@ -90,7 +95,7 @@ func Serve(c net.Conn) {
 		fmt.Fprint(c, list)
 		return
 	}
-	f, err := os.Open(filename, os.O_RDONLY, 0)
+	f, err := os.Open(filename)
 	if err != nil {
 		fmt.Fprint(c, Error("couldn't open file"))
 		return
@@ -99,16 +104,22 @@ func Serve(c net.Conn) {
 }
 
 func Error(msg string) Listing {
-	return Listing{Entry{Type: T_Error, Display: msg}}
+	return Listing{Entry{Type: 3, Display: msg}}
 }
 
 func main() {
-	flag.Parse()
-	if *root == "" {
-		log.Fatal("Please specify a content root with -root")
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "usage: %s directory\n", os.Args[0])
+		flag.PrintDefaults()
+		os.Exit(2)
 	}
-	if (*root)[len(*root)-1:] == "/" {
-		*root = (*root)[:len(*root)-1]
+
+	flag.Parse()
+	if root = flag.Arg(0); root == "" {
+		flag.Usage()
+	}
+	if strings.HasSuffix(root, "/") {
+		root = root[:len(root)-1]
 	}
 	l, err := net.Listen("tcp", fmt.Sprintf("%s:%d", *host, *port))
 	if err != nil {
