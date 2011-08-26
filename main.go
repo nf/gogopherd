@@ -36,6 +36,9 @@ type Listing []Entry
 func (l Listing) String() string {
 	var b bytes.Buffer
 	for _, e := range l {
+		if e.Type == 0 {
+			continue // skip sentinel value
+		}
 		fmt.Fprint(&b, e)
 	}
 	fmt.Fprint(&b, ".\r\n")
@@ -44,6 +47,7 @@ func (l Listing) String() string {
 
 func (l *Listing) VisitDir(path string, f *os.FileInfo) bool {
 	if len(*l) == 0 {
+		*l = append(*l, Entry{}) // sentinel value
 		return true
 	}
 	*l = append(*l, Entry{'1', f.Name, path[len(root):], *host, *port})
