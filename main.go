@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"flag"
 	"fmt"
@@ -45,30 +46,30 @@ func (l Listing) String() string {
 	return b.String()
 }
 
-func (l *Listing) VisitDir(path string, f *os.FileInfo) bool {
+func (l *Listing) VisitDir(path string, f os.FileInfo) error {
 	if len(*l) == 0 {
 		*l = append(*l, Entry{}) // sentinel value
-		return true
+		return nil
 	}
-	*l = append(*l, Entry{'1', f.Name, path[len(root):], *host, *port})
-	return false
+	*l = append(*l, Entry{'1', f.Name(), path[len(root)-1:], *host, *port})
+	return filepath.SkipDir
 }
 
 var suffixes = map[string]byte{
 	"aiff": 's',
-	"au": 's',
-	"gif": 'g',
-	"go": '0',
+	"au":   's',
+	"gif":  'g',
+	"go":   '0',
 	"html": 'h',
 	"jpeg": 'I',
-	"jpg": 'I',
-	"mp3": 's',
-	"png": 'I',
-	"txt": '0',
-	"wav": 's',
+	"jpg":  'I',
+	"mp3":  's',
+	"png":  'I',
+	"txt":  '0',
+	"wav":  's',
 }
 
-func (l *Listing) VisitFile(path string, f *os.FileInfo) {
+func (l *Listing) VisitFile(path string, f os.FileInfo) {
 	t := byte('9') // Binary
 	for s, c := range suffixes {
 		if strings.HasSuffix(path, "."+s) {
@@ -76,26 +77,35 @@ func (l *Listing) VisitFile(path string, f *os.FileInfo) {
 			break
 		}
 	}
-	*l = append(*l, Entry{t, f.Name, path[len(root):], *host, *port})
+	*l = append(*l, Entry{t, f.Name(), path[len(root)-1:], *host, *port})
 }
 
 func Serve(c net.Conn) {
 	defer c.Close()
-	var p string
-	n, err := fmt.Fscanln(c, &p)
-	if n != 1 || err != nil {
+	connbuf := bufio.NewReader(c)
+	p, _, err := connbuf.ReadLine()
+	if err != nil {
 		fmt.Fprint(c, Error("invalid request"))
 		return
 	}
-	filename := root + filepath.Clean("/"+p)
+	filename := root + filepath.Clean("/"+string(p))
 	fi, err := os.Stat(filename)
 	if err != nil {
 		fmt.Fprint(c, Error("not found"))
 		return
 	}
-	if fi.IsDirectory() {
+	if fi.IsDir() {
 		var list Listing
-		filepath.Walk(filename, &list, nil)
+		walkFn := func(path string, info os.FileInfo, err error) error {
+			if info.IsDir() {
+				return (&list).VisitDir(path, info)
+			}
+
+			(&list).VisitFile(path, info)
+			return nil
+		}
+
+		filepath.Walk(filename, walkFn)
 		fmt.Fprint(c, list)
 		return
 	}
