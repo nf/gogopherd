@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"os"
@@ -81,7 +80,7 @@ func (l *Listing) VisitFile(path string, f os.FileInfo) {
 	*l = append(*l, Entry{t, f.Name(), path[len(root)-1:], *host, *port})
 }
 
-func Serve(c net.Conn) {
+func Serve(c *net.TCPConn) {
 	defer c.Close()
 	connbuf := bufio.NewReader(c)
 	p, _, err := connbuf.ReadLine()
@@ -115,7 +114,7 @@ func Serve(c net.Conn) {
 		fmt.Fprint(c, Error("couldn't open file"))
 		return
 	}
-	io.Copy(c, f)
+	sendfile(c, f, fi)
 }
 
 func Error(msg string) Listing {
@@ -144,9 +143,10 @@ func main() {
 
 	for {
 		c, err := l.Accept()
+		tcpConn := c.(*net.TCPConn)
 		if err != nil {
 			log.Fatal(err)
 		}
-		go Serve(c)
+		go Serve(tcpConn)
 	}
 }
