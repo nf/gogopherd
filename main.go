@@ -14,9 +14,10 @@ import (
 )
 
 var (
-	host = flag.String("host", "localhost", "server hostname")
-	port = flag.Int("port", 70, "server port number")
-	root string
+	host    = flag.String("host", "localhost", "hostname used in links")
+	address = flag.String("address", "localhost", "listen on address")
+	port    = flag.String("port", "70", "listen on port")
+	root    string
 )
 
 type Entry struct {
@@ -24,11 +25,11 @@ type Entry struct {
 	Display  string
 	Selector string
 	Hostname string
-	Port     int
+	Port     string
 }
 
 func (e Entry) String() string {
-	return fmt.Sprintf("%c%s\t%s\t%s\t%d\r\n",
+	return fmt.Sprintf("%c%s\t%s\t%s\t%s\r\n",
 		e.Type, e.Display, e.Selector, e.Hostname, e.Port)
 }
 
@@ -135,10 +136,12 @@ func main() {
 	if strings.HasSuffix(root, "/") {
 		root = root[:len(root)-1]
 	}
-	l, err := net.Listen("tcp", fmt.Sprintf("%s:%d", *host, *port))
+	listenAddr := net.JoinHostPort(*address, *port)
+	l, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	for {
 		c, err := l.Accept()
 		if err != nil {
