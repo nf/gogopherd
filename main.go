@@ -114,7 +114,7 @@ func Serve(c *net.TCPConn) {
 		fmt.Fprint(c, Error("couldn't open file"))
 		return
 	}
-	sendfile(c, f, fi)
+	c.ReadFrom(f)
 }
 
 func Error(msg string) Listing {
