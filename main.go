@@ -46,12 +46,12 @@ func (l Listing) String() string {
 	return b.String()
 }
 
-func (l Listing) VisitDir(path string, f os.FileInfo) error {
-	if len(l) == 0 {
-		l = append(l, Entry{}) // sentinel value
+func (l *Listing) VisitDir(path string, f os.FileInfo) error {
+	if len(*l) == 0 {
+		*l = append(*l, Entry{}) // sentinel value
 		return nil
 	}
-	l = append(l, Entry{'1', f.Name(), path[len(root)-1:], *host, *port})
+	*l = append(*l, Entry{'1', f.Name(), path[len(root):], *host, *port})
 	return filepath.SkipDir
 }
 
@@ -69,7 +69,7 @@ var suffixes = map[string]byte{
 	"wav":  's',
 }
 
-func (l Listing) VisitFile(path string, f os.FileInfo) {
+func (l *Listing) VisitFile(path string, f os.FileInfo) {
 	t := byte('9') // Binary
 	for s, c := range suffixes {
 		if strings.HasSuffix(path, "."+s) {
@@ -77,7 +77,7 @@ func (l Listing) VisitFile(path string, f os.FileInfo) {
 			break
 		}
 	}
-	l = append(l, Entry{t, f.Name(), path[len(root)-1:], *host, *port})
+	*l = append(*l, Entry{t, f.Name(), path[len(root):], *address, *port})
 }
 
 func Serve(c *net.TCPConn) {
@@ -135,6 +135,7 @@ func main() {
 	if strings.HasSuffix(root, "/") {
 		root = root[:len(root)-1]
 	}
+
 	listenAddr := net.JoinHostPort(*address, *port)
 	l, err := net.Listen("tcp", listenAddr)
 	if err != nil {
