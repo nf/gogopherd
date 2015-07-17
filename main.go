@@ -16,6 +16,8 @@ var (
 	host    = flag.String("host", "localhost", "hostname used in links")
 	address = flag.String("address", "localhost", "listen on address")
 	port    = flag.String("port", "70", "listen on port")
+	header  = flag.String("header", "", "Inline text to show above directory listing")
+	footer  = flag.String("footer", "", "Inline text to show below directory listing")
 	root    string
 )
 
@@ -80,6 +82,15 @@ func (l *Listing) VisitFile(path string, f os.FileInfo) {
 	*l = append(*l, Entry{t, f.Name(), path[len(root):], *address, *port})
 }
 
+func PrintInlineText(c *net.TCPConn, text *string) {
+	if text == nil || len(*text) <= 0 {
+		return
+	}
+	for _, line := range strings.Split(*text, "\n") {
+		fmt.Fprint(c, Listing{Entry{'i', line, "TITLE", "null.host", "70"}})
+	}
+}
+
 func Serve(c *net.TCPConn) {
 	defer c.Close()
 	connbuf := bufio.NewReader(c)
@@ -105,8 +116,11 @@ func Serve(c *net.TCPConn) {
 			return nil
 		}
 
+		PrintInlineText(c, header)
+
 		filepath.Walk(filename, walkFn)
 		fmt.Fprint(c, list)
+		PrintInlineText(c, footer)
 		return
 	}
 	f, err := os.Open(filename)
