@@ -16,6 +16,8 @@ var (
 	host    = flag.String("host", "localhost", "hostname used in links")
 	address = flag.String("address", "localhost", "listen on address")
 	port    = flag.String("port", "70", "listen on port")
+	header  = flag.String("header", "", "Inline text to show above directory listing")
+	footer  = flag.String("footer", "", "Inline text to show below directory listing")
 	root    string
 )
 
@@ -46,12 +48,12 @@ func (l Listing) String() string {
 	return b.String()
 }
 
-func (l Listing) VisitDir(path string, f os.FileInfo) error {
-	if len(l) == 0 {
-		l = append(l, Entry{}) // sentinel value
+func (l *Listing) VisitDir(path string, f os.FileInfo) error {
+	if len(*l) == 0 {
+		*l = append(*l, Entry{}) // sentinel value
 		return nil
 	}
-	l = append(l, Entry{'1', f.Name(), path[len(root)-1:], *host, *port})
+	*l = append(*l, Entry{'1', f.Name(), path[len(root):], *host, *port})
 	return filepath.SkipDir
 }
 
@@ -69,7 +71,7 @@ var suffixes = map[string]byte{
 	"wav":  's',
 }
 
-func (l Listing) VisitFile(path string, f os.FileInfo) {
+func (l *Listing) VisitFile(path string, f os.FileInfo) {
 	t := byte('9') // Binary
 	for s, c := range suffixes {
 		if strings.HasSuffix(path, "."+s) {
@@ -77,7 +79,16 @@ func (l Listing) VisitFile(path string, f os.FileInfo) {
 			break
 		}
 	}
-	l = append(l, Entry{t, f.Name(), path[len(root)-1:], *host, *port})
+	*l = append(*l, Entry{t, f.Name(), path[len(root):], *address, *port})
+}
+
+func PrintInlineText(c *net.TCPConn, text *string) {
+	if text == nil || len(*text) <= 0 {
+		return
+	}
+	for _, line := range strings.Split(*text, "\n") {
+		fmt.Fprint(c, Listing{Entry{'i', line, "TITLE", "null.host", "70"}})
+	}
 }
 
 func Serve(c *net.TCPConn) {
@@ -105,8 +116,11 @@ func Serve(c *net.TCPConn) {
 			return nil
 		}
 
+		PrintInlineText(c, header)
+
 		filepath.Walk(filename, walkFn)
 		fmt.Fprint(c, list)
+		PrintInlineText(c, footer)
 		return
 	}
 	f, err := os.Open(filename)
@@ -114,7 +128,7 @@ func Serve(c *net.TCPConn) {
 		fmt.Fprint(c, Error("couldn't open file"))
 		return
 	}
-	sendfile(c, f, fi)
+	c.ReadFrom(f)
 }
 
 func Error(msg string) Listing {
@@ -135,6 +149,7 @@ func main() {
 	if strings.HasSuffix(root, "/") {
 		root = root[:len(root)-1]
 	}
+
 	listenAddr := net.JoinHostPort(*address, *port)
 	l, err := net.Listen("tcp", listenAddr)
 	if err != nil {
